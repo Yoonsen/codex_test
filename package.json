@@ -13,6 +13,7 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
+    "dev": "react-scripts start",
     "start": "react-scripts start",
     "build": "PUBLIC_URL=/codex_ngram_test react-scripts build",
     "build:nb": "PUBLIC_URL=/ngram react-scripts build",
