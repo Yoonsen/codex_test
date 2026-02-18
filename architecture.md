@@ -1,173 +1,120 @@
-# N-gram App Architecture
+# Codex N-gram Test Architecture
 
 ## 1) Systemoversikt
-Frontend er en React-app (CRA) som henter N-gram-data direkte fra NB API.  
-Arkitekturen er klienttung: state, visualisering, deling og eksport håndteres i browser.
+Appen er en React (CRA) SPA der all runtime-logikk ligger i frontend.
 
-Flyt:
-1. Bruker endrer søkeparametre.
-2. Frontend bygger query mot NB N-gram API.
-3. API-respons normaliseres til intern datastruktur.
-4. Grafen rendres med Chart.js + zoom-plugin.
-5. Bruker kan dele (hash-lenker), eksportere (xlsx/png), eller zoome videre.
+Hovedflyt:
+1. Bruker endrer søk/filter.
+2. Frontend bygger query mot N-gram API.
+3. Respons normaliseres til intern modell.
+4. Datasett transformeres per grafmodus.
+5. Graf rendres i Chart.js med zoom/pan.
+6. Bruker kan eksportere/ dele via hash-lenke.
 
 ---
 
-## 2) Hovedkomponenter
+## 2) Kildekode-struktur
 
 ### `src/App.js`
-- Overordnet state-orchestrator.
-- Eier:
-  - `data`
-  - `graphType`
-  - `settings`
-  - `lastQuery`
-- Kaller `fetchNgramData(...)`.
-- Dedupliserer identiske requests.
+- Overordnet state:
+  - `query` (`terms`, `from`, `to`)
+  - `settings` (grafmodus + visualiseringsinnstillinger)
+  - `data`, `loading`, `error`
+- Leser hash ved oppstart (`parseHash`).
+- Henter data via `fetchNgramData`.
+- Oppdaterer URL med `v2` hash.
+- Setter `document.title` fra `APP_CONFIG.appName`.
 
 ### `src/components/SearchControls.js`
-- Kontroller for søk og verktøy.
-- Håndterer:
-  - ordinput
-  - språk/korpus/graftype dropdowns
-  - verktøymodal (grafinnstillinger, akse/skala, periode, søk-innstillinger)
-- Støtter oppstart via parsed hash (legacy/v2).
-- Emmitter konsolidert settings-objekt til `App`.
+- Søkefelt + dropdowns for korpus/språk/grafmodus.
+- Verktøymodal for smoothing, line width, alpha, palette, pattern, scale, period, case.
+- Emiterer samlet `{ query, settings }` tilbake til `App`.
 
 ### `src/components/NgramChartRecharts.js`
-- Primær visualisering (Chart.js line chart).
-- Ansvar:
-  - datatransformasjon per grafmodus
-  - smoothing
-  - auto `%`/`ppm`-skalering
-  - zoom/pan/reset
-  - klikk på datapunkt -> søkemodal
-  - tooltip-formattering
-  - kurvemønster (dash + markørvarianter)
+- Chart.js line chart (via `react-chartjs-2`).
+- Bruker `getChartModel(...)` for transformerte datasett.
+- Zoom/pan via `chartjs-plugin-zoom`.
+- Tooltip viser enhet (`%`, `ppm`, `frekvens`).
+- Eksponerer `exportPng()` og `resetZoomToHome()` via `ref`.
 
 ### `src/components/AppHeader.js`
-- Toppbanner med:
-  - NB-brand
-  - `Om N-gram`-modal
-  - delingsdropdown
-- Genererer delingslenker i `v2`-format.
-- Eksporterer:
-  - Excel-dataramme
-  - PNG
-  - lenke til utklippstavle
+- App-header med navn, info-modal og delingsmeny.
+- Eksport:
+  - `.xlsx` (SheetJS)
+  - `.png` (chart snapshot)
+  - kopier delbar lenke
 
 ### `src/services/ngramProcessor.js`
-- API-adapter og responsnormalisering.
-- Inneholder:
-  - API-base
-  - request timeout
-  - mapping mellom UI-parametre og API-parametre
-  - transformasjon til intern datastruktur
+- API-klient + timeout (`AbortController`).
+- Bruker fast endpoint:
+  - `https://api.nb.no/dhlab/nb_ngram/ngram/query`
+- Mapper query-parametre og normaliserer respons til:
+  - `{ dates: number[], series: { name, relative[], absolute[] }[] }`
 
 ### `src/services/legacyHash.js`
-- Parser URL-hash for:
-  - legacy-format (`#1_1_...`)
-  - nytt `v2`-format (`#v2?...`)
-- Returnerer initial state for query/settings.
+- Parser:
+  - legacy hash (`#1_...`)
+  - v2 hash (`#v2?...`)
+- Bygger v2 hash med eksplisitte params.
+
+### `src/services/chartTransforms.js`
+- Datamodeller for graf:
+  - mode-transform (`relative`/`absolute`/`cumulative`/`cohort`)
+  - moving average
+  - auto-skala (`%`/`ppm`)
+  - fargepaletter + dash/marker-mønster
+
+### `src/config.js`
+- Prosjektspesifikk app-konfig:
+  - `appName`
+  - `shareBaseUrl` (valgfri)
 
 ---
 
-## 3) API-kontrakter
+## 3) API-kontrakt
 
-## 3.1 Utgående request
-Endpoint:
-- `https://api.nb.no/dhlab/nb_ngram/ngram/query`
+### 3.1 Request
+- Metode: `GET`
+- Endpoint: `https://api.nb.no/dhlab/nb_ngram/ngram/query`
+- Parametre:
+  - `terms` (kommaseparert)
+  - `lang`
+  - `case_sens` (`0|1`)
+  - `corpus` (`bok|avis`)
+  - `mode` (`relative|absolutt`)
+  - `smooth=1`
+  - `from`, `to`
 
-HTTP:
-- `GET`
-
-Query-parametre (fra frontend):
-- `terms`: kommaseparert ordliste (`"fred,frihet"`)
-- `lang`: språk (`nob`, `nno`, `sme`, osv., eller `nor` for avis)
-- `case_sens`: `0|1`
-- `corpus`: `bok|avis`
-- `mode`: `relative|absolutt`  
-  (kumulativ/kohort bygges videre i frontendlogikk)
-- `smooth`: settes til `1` i API-kallet (frontend håndterer visningsutjevning)
-- `from`: startår
-- `to`: sluttår
-
-Eksempel:
-`/ngram/query?terms=fred,frihet&lang=nob&case_sens=0&corpus=bok&mode=relative&smooth=1&from=1810&to=2025`
-
-## 3.2 Inngående API-respons (forventet)
-Array av n-gramserier, typisk:
-- `key`: ord/term
-- `values`: liste med punkter per år, med felter som:
-  - `x`: år
-  - `y`: relativ verdi
-  - `f`: absolutt frekvens
-
-Frontend normaliserer dette til intern modell:
-```json
-{
-  "dates": [1810, 1811, 1812, "..."],
-  "series": [
-    { "name": "fred", "data": [0.0001, 0.00009, "..."] },
-    { "name": "frihet", "data": [0.00003, 0.00004, "..."] }
-  ]
-}
-```
+### 3.2 Response
+- Forventet liste av serier:
+  - `key`
+  - `values[]` med `x`, `y`, `f`
+- Normaliseres til intern datastruktur brukt i chart-laget.
 
 ---
 
-## 4) URL, deling og routing
+## 4) URL- og delingsmodell
 
-## 4.1 Legacy hash
-Eksempel:
-- `#1_1_1_fred,frihet_1_1_3_1810,2022_2_2_2_12_2`
-
-Parseren henter ut minst:
-- ord
-- grafmodus
-- korpus/språk
-- case/smoothing
-- periode
-
-## 4.2 V2 hash (app-kontrollert)
-Eksempel:
-- `#v2?terms=fred,frihet&mode=cumulative&corpus=bok&lang=nob&case=0&smooth=3&scale=auto&pattern=1&from=1810&to=2022`
-
-Dette formatet er eksplisitt, robust og lett å rekonstruere.
+- Legacy hash støttes for bakoverkompatibilitet.
+- Appen skriver alltid tilbake state som `v2` hash.
+- Delbar URL bygges fra:
+  - `REACT_APP_SHARE_BASE_URL` hvis satt
+  - ellers nåværende origin + path.
 
 ---
 
-## 5) Visningslogikk
+## 5) Bygg og deploy
 
-- Relativ visning:
-  - auto-skala velger `%` eller `ppm` ut fra datanivå.
-- Absolutt visning:
-  - bruker absoluttverdi fra respons (`f`) når relevant.
-- Kumulativ:
-  - summerer serie over tid.
-- Kohort:
-  - normaliserer mot sum innen år.
-
-Tilgjengelighet:
-- fargepaletter (`standard`, `colorblind`, `bw`)
-- valgfritt kurvemønster for ikke-fargebasert separasjon
+- `npm start`: lokal dev.
+- `npm run build`: prod-build for `/codex_ngram_test`.
+- `npm run build:nb`: alternativ build for `/ngram`.
+- `npm run deploy`: build + publish til `gh-pages`.
 
 ---
 
-## 6) Bygg- og deployløype
+## 6) Robusthetsvalg
 
-Scripts:
-- `npm start` -> lokal utvikling
-- `npm run build` -> GitHub Pages-basert build (`/dhlab-app-nb-ngram`)
-- `npm run build:nb` -> NB produksjonsbase (`/ngram`)
-- `npm run deploy` -> build + publish til `gh-pages`
-
----
-
-## 7) Designvalg for robusthet
-
-- Request timeout i API-lag.
-- Beskyttelse mot click-after-zoom.
-- Dropdowns/dialoger lukker ved klikk utenfor + `Esc`.
-- Zoom-vindu bevares ved relevante parameterjusteringer.
-- Konsistent settings-emisjon for å unngå stale-state overskriving.
+- Request-timeout i API-lag.
+- Deduplisering av identiske forespørsler i `App`.
+- Click-after-zoom-beskyttelse i chart.
+- CI-vennlig lint-strenghet i build.
