@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "react-scripts start",
     "start": "react-scripts start",
-    "build": "PUBLIC_URL=/codex_ngram_test react-scripts build",
+    "build": "PUBLIC_URL=/codex_test react-scripts build",
     "build:nb": "PUBLIC_URL=/ngram react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",

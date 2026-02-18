@@ -106,7 +106,7 @@ Hovedflyt:
 ## 5) Bygg og deploy
 
 - `npm start`: lokal dev.
-- `npm run build`: prod-build for `/codex_ngram_test`.
+- `npm run build`: prod-build for `/codex_test`.
 - `npm run build:nb`: alternativ build for `/ngram`.
 - `npm run deploy`: build + publish til `gh-pages`.
 

@@ -53,7 +53,7 @@ Den skal være enkel å bruke uten forkunnskaper, men fortsatt nyttig for mer av
 - Støtte for to hash-formater:
   1. legacy-format (`#1_...`)
   2. nytt `v2`-format (`#v2?...`)
-- Appen bygges primært for URL-base: `/codex_ngram_test`.
+- Appen bygges primært for URL-base: `/codex_test` (GitHub Pages for dette repoet).
 
 ## Leveransekrav
 - Build skal passere i CI-modus (warnings behandles som feil).
